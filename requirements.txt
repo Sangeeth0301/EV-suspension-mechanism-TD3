@@ -1,0 +1,101 @@
+# ==============================================================================
+# requirements.txt
+# Project: Cyber-Resilient LPV-Adaptive EV Active Suspension Simulation
+# Novelty 1: UKF Road-Adaptive Brain (Kalman + LPV)
+# Novelty 2: TD3 Deep Reinforcement Learning Energy Harvester
+# ==============================================================================
+# Install all dependencies with:
+#   pip install -r requirements.txt
+# ==============================================================================
+
+
+# ==============================================================================
+# CORE MATH, PHYSICS & NUMERICAL SOLVERS
+# Used by: half_car_model.py, ukf_estimator.py, lpv_controller.py
+# ------------------------------------------------------------------------------
+# numpy  : All matrix/vector operations (state vectors, gain matrices, ODE)
+# scipy  : solve_ivp (physics ODE solver) + solve_continuous_are (Riccati/CARE
+#          equation that derives LPV gains — replaces manually typed numbers)
+# ==============================================================================
+numpy>=1.24.0
+scipy>=1.10.0
+
+
+# ==============================================================================
+# AI & REINFORCEMENT LEARNING (Novelty 2: TD3 Energy Harvester)
+# Used by: controllers/td3_energy_agent.py
+# ------------------------------------------------------------------------------
+# gymnasium       : Provides the standard Gym environment interface for the
+#                   suspension environment that the TD3 agent trains inside
+# torch           : PyTorch — the neural network backend for the TD3
+#                   actor-critic policy and Q-value networks
+# stable-baselines3: Provides the ready-made TD3 algorithm with replay buffer,
+#                    delayed policy updates, and target smoothing — matches the
+#                    2023-2024 IEEE literature standard for continuous control
+# ==============================================================================
+gymnasium>=0.28.1
+torch>=2.0.0
+stable-baselines3>=2.0.0
+
+
+# ==============================================================================
+# NONLINEAR ESTIMATION & FILTERS (Novelty 1: UKF Road Classifier)
+# Used by: controllers/ukf_estimator.py
+# ------------------------------------------------------------------------------
+# filterpy : Provides the UnscentedKalmanFilter class with sigma-point
+#            propagation. We extend this with our 3-state suspension model
+#            (deflection, velocity, road disturbance) to produce both rho(t)
+#            and rho_dot(t) — the early-warning rate signal.
+# ==============================================================================
+filterpy>=1.4.5
+
+
+# ==============================================================================
+# TELEMETRY, DATA PROCESSING & EXPORT
+# Used by: run_simulation.py
+# ------------------------------------------------------------------------------
+# pandas : Stores simulation timestep data as a DataFrame for clean CSV export.
+#          The final results comparison table is built and printed using pandas.
+# ==============================================================================
+pandas>=2.0.0
+
+
+# ==============================================================================
+# VISUALIZATION & 5-PANEL DASHBOARD
+# Used by: run_simulation.py
+# ------------------------------------------------------------------------------
+# matplotlib : Generates the 5-panel scientific graph:
+#              Panel 1: Road profile + potholes
+#              Panel 2: UKF rho(t) + rho_dot(t) early warning
+#              Panel 3: LPV actuator force u(t)
+#              Panel 4: Body bounce comparison (Base vs Old vs Upgraded)
+#              Panel 5: Battery SoC + Faraday energy harvest bars
+# seaborn    : Applies a clean, publication-quality visual theme to all plots
+# tqdm       : Displays a progress bar during TD3 training episodes
+# ==============================================================================
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tqdm>=4.65.0
+
+
+# ==============================================================================
+# AUTOMATED TESTING & VALIDATION (Future — tests/test_all.py)
+# ------------------------------------------------------------------------------
+# pytest     : Test runner for all pass/fail engineering assertions
+# pytest-cov : Reports what % of the codebase is covered by tests.
+#              Target: >= 90% coverage for thesis credibility.
+# ==============================================================================
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+
+# ==============================================================================
+# CONTROL SYSTEMS VERIFICATION (Optional — H-infinity norm check)
+# Used by: lpv_controller.py (optional verification step)
+# ------------------------------------------------------------------------------
+# control : Python Control Systems Library. Used to formally verify that the
+#           H-infinity norm ||T_zw||_inf < gamma of our synthesized LPV gains
+#           is mathematically satisfied. Prints the gamma value in the results
+#           table as a formal proof of the H-infinity performance guarantee.
+# ==============================================================================
+control>=0.9.4
