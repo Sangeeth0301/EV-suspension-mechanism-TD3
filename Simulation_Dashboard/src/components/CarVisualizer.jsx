@@ -57,16 +57,65 @@ const CarVisualizer = ({ currentFrame, data, currentTime }) => {
         {/* Road Surface */}
         <path d={roadPath} fill="#334155" stroke="#94a3b8" strokeWidth="2" />
         
-        {/* Spring/Damper Strut */}
-        <line 
-          x1={centerX} 
-          y1={carY + carHeight/2} 
-          x2={centerX} 
-          y2={wheelY} 
-          stroke="#3b82f6" 
-          strokeWidth="6" 
-          strokeDasharray="4 4"
-        />
+        {/* Realistic Coilover Damper System */}
+        <g id="coilover">
+          {/* Upper mount (attached to car body) */}
+          <rect x={centerX - 12} y={carY + carHeight/2} width="24" height="10" fill="#cbd5e1" rx="3" />
+          
+          {/* Damper Rod (inner cylinder) */}
+          <rect 
+            x={centerX - 4} 
+            y={carY + carHeight/2 + 10} 
+            width="8" 
+            height={Math.max(0, wheelY - (carY + carHeight/2) - 40)} 
+            fill="#94a3b8" 
+          />
+          
+          {/* Damper Body (outer cylinder attached to wheel) */}
+          <rect 
+            x={centerX - 14} 
+            y={wheelY - 50} 
+            width="28" 
+            height="50" 
+            fill={currentFrame.instant_power_w > 1000 ? "#10b981" : "#334155"} 
+            stroke="#1e293b"
+            strokeWidth="2"
+            rx="4"
+          />
+          
+          {/* Active Control Coil / Spring (ZigZag pattern) */}
+          {(() => {
+            const topY = carY + carHeight/2 + 10;
+            const bottomY = wheelY - 20;
+            const numCoils = 6;
+            const coilHeight = (bottomY - topY) / numCoils;
+            const coilWidth = 24;
+            
+            let path = `M ${centerX - coilWidth}, ${topY} `;
+            for(let i=0; i<numCoils; i++) {
+              const startY = topY + i * coilHeight;
+              const nextY = topY + (i + 0.5) * coilHeight;
+              const endY = topY + (i + 1) * coilHeight;
+              
+              if(i % 2 === 0) {
+                path += `L ${centerX + coilWidth}, ${nextY} L ${centerX - coilWidth}, ${endY} `;
+              } else {
+                path += `L ${centerX - coilWidth}, ${nextY} L ${centerX + coilWidth}, ${endY} `;
+              }
+            }
+            
+            return (
+              <path 
+                d={path} 
+                fill="none" 
+                stroke="#3b82f6" 
+                strokeWidth="5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+            );
+          })()}
+        </g>
         
         {/* Unsprung Mass (Wheel) */}
         <circle 
@@ -105,7 +154,8 @@ const CarVisualizer = ({ currentFrame, data, currentTime }) => {
         <g fill="#94a3b8" fontSize="13" fontFamily="Inter, sans-serif" fontWeight="500">
           <text x="20" y="30">Road Deflection: {(currentFrame.w_f * 1000).toFixed(1)} mm</text>
           <text x="20" y="55">Cabin Bounce: {(currentFrame.z_c * 1000).toFixed(1)} mm</text>
-          <text x="20" y="80" fill={currentFrame.instant_power_w > 100 ? "#10b981" : "#8b5cf6"}>
+          <text x="20" y="80">Damper Stroke: {((currentFrame.z_c - currentFrame.z_uf) * 1000).toFixed(1)} mm</text>
+          <text x="20" y="105" fill={currentFrame.instant_power_w > 100 ? "#10b981" : "#8b5cf6"}>
             EM Motor Load: {currentFrame.u_f.toFixed(0)} N
           </text>
         </g>

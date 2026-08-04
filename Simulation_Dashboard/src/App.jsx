@@ -3,7 +3,7 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { Activity, Battery, Shield, ShieldAlert, Zap, Car, Play, Pause, RotateCcw, Repeat } from 'lucide-react';
+import { Activity, Battery, Shield, ShieldAlert, Zap, Car, Play, Pause, RotateCcw, Repeat, Package } from 'lucide-react';
 import MetricCard from './components/MetricCard';
 import ChartPanel from './components/ChartPanel';
 import CarVisualizer from './components/CarVisualizer';
@@ -261,6 +261,12 @@ function App() {
           icon={Zap} 
           highlight={currentFrame.harvested_range_m > 0}
         />
+        <MetricCard 
+          title="Added PE Mass" 
+          value="9.00" 
+          unit="kg" 
+          icon={Package} 
+        />
         {/* Dual Metric: Instant Power */}
         <div className={`metric-card ${currentFrame.instant_power_w > 500 ? 'highlight' : ''}`}>
           <div className="metric-header">
@@ -338,6 +344,39 @@ function App() {
         <ChartPanel colSpan={2} title="4. Digital Twin: Real-Time Suspension Kinematics" subtitle="Visualizing the AI absorbing road severity while holding the cabin steady">
           <div style={{ width: '100%', height: '100%', minHeight: '300px' }}>
             <CarVisualizer currentFrame={currentFrame} data={data} currentTime={currentTime} />
+          </div>
+        </ChartPanel>
+      </section>
+
+      {/* 4. ANALYSIS SECTION */}
+      <section className="charts-grid" style={{ marginTop: '1.5rem' }}>
+        <ChartPanel title="5. Mechanical Damping vs Active Control" subtitle="Bode Plot Analysis of LQR Virtual Damping">
+          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <img 
+              src="/bode_plot.png" 
+              alt="Bode Plot" 
+              style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: '8px' }} 
+            />
+          </div>
+        </ChartPanel>
+
+        <ChartPanel title="6. Regenerative Power Stabilization" subtitle="LC Filter + Shift Transformer (9.00 kg added mass)">
+          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <img 
+              src="/power_stability_plot.png" 
+              alt="Power Stability Plot" 
+              style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: '8px' }} 
+            />
+          </div>
+        </ChartPanel>
+
+        <ChartPanel colSpan={2} title="7. Control System Stability" subtitle="Pole-Zero Map of the LQR Closed-Loop System">
+          <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <img 
+              src="/pz_map.png" 
+              alt="Pole Zero Map" 
+              style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain', borderRadius: '8px', background: 'white' }} 
+            />
           </div>
         </ChartPanel>
       </section>

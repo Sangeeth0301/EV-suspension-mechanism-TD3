@@ -64,3 +64,20 @@ class VehicleParams:
     # --------------------------------------------------------------------------
     stroke_max = 0.08   # Maximum suspension deflection before hitting bump stop (m)
     u_max = 6000.0      # Maximum actuator force available (N)
+
+    # --------------------------------------------------------------------------
+    # Power Electronics (Shift Transformer & LC Filter)
+    # --------------------------------------------------------------------------
+    # Weights per wheel (kg)
+    mass_transformer = 2.5
+    mass_inductor = 1.5
+    mass_capacitor = 0.5
+    
+    # Electrical properties
+    inductance_L = 0.01      # 10 mH
+    capacitance_C = 0.0047   # 4700 uF
+    
+    def get_power_electronics_weight(self):
+        """Returns the total added weight of power electronics for the half-car (2 wheels)"""
+        weight_per_wheel = self.mass_transformer + self.mass_inductor + self.mass_capacitor
+        return weight_per_wheel * 2.0
