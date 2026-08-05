@@ -32,6 +32,11 @@ class UKFRoadEstimator:
         self.rho_f_prev = 0.0
         self.rho_r_prev = 0.0
         
+        # EMA Low-Pass Filter variables to prevent chattering
+        self.rho_dot_f_filt = 0.0
+        self.rho_dot_r_filt = 0.0
+        self.ema_alpha = 0.05 # Smoothing factor (lower = smoother but slower reaction)
+        
         # Maximum expected road disturbance (for normalizing rho to 0-1)
         self.w_max = 0.05  # 50mm
 
@@ -132,8 +137,10 @@ class UKFRoadEstimator:
         w_road_est_f = abs(self.ukf_f.x[2])
         rho_f = np.clip(w_road_est_f / self.w_max, 0.0, 1.0)
         
-        # Calculate rate of change (rho_dot)
-        rho_dot_f = (rho_f - self.rho_f_prev) / self.dt
+        # Calculate rate of change (rho_dot) with EMA Low-Pass Filter
+        raw_rho_dot_f = (rho_f - self.rho_f_prev) / self.dt
+        self.rho_dot_f_filt = self.ema_alpha * raw_rho_dot_f + (1.0 - self.ema_alpha) * self.rho_dot_f_filt
+        rho_dot_f = self.rho_dot_f_filt
         self.rho_f_prev = rho_f
 
 
@@ -143,7 +150,10 @@ class UKFRoadEstimator:
         
         w_road_est_r = abs(self.ukf_r.x[2])
         rho_r = np.clip(w_road_est_r / self.w_max, 0.0, 1.0)
-        rho_dot_r = (rho_r - self.rho_r_prev) / self.dt
+        
+        raw_rho_dot_r = (rho_r - self.rho_r_prev) / self.dt
+        self.rho_dot_r_filt = self.ema_alpha * raw_rho_dot_r + (1.0 - self.ema_alpha) * self.rho_dot_r_filt
+        rho_dot_r = self.rho_dot_r_filt
         self.rho_r_prev = rho_r
 
         return rho_f, rho_dot_f, rho_r, rho_dot_r

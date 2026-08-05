@@ -131,6 +131,10 @@ class LPVController:
             # Only apply if road is rapidly worsening (> 0)
             u_f_ff = -np.dot(self.K_rho_dot * max(0, rho_dot_f), qc_state_f)
             
+            # Anti-windup / Saturation on feedforward (limit to 20% of max force)
+            ff_limit = 0.2 * self.p.u_max
+            u_f_ff = np.clip(u_f_ff, -ff_limit, ff_limit)
+            
             u_f = u_f_base + u_f_ff
             
         # 2. REAR WHEEL
@@ -139,7 +143,11 @@ class LPVController:
         else:
             K_r = (1.0 - rho_r) * self.K_smooth + rho_r * self.K_rough
             u_r_base = -np.dot(K_r, qc_state_r)
+            
             u_r_ff = -np.dot(self.K_rho_dot * max(0, rho_dot_r), qc_state_r)
+            ff_limit = 0.2 * self.p.u_max
+            u_r_ff = np.clip(u_r_ff, -ff_limit, ff_limit)
+            
             u_r = u_r_base + u_r_ff
             
         # Clamp to physical actuator limits
