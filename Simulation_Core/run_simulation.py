@@ -17,8 +17,7 @@ from Simulation_Core.config.vehicle_params import VehicleParams
 # Import Core Physics
 from Simulation_Core.physics.half_car_model import HalfCarModel
 
-# Import Generators & Networks
-from Simulation_Core.road.road_generator import RoadGenerator
+from Simulation_Core.road.road_generator import RoadGenerator, RealRoadGenerator
 from Simulation_Core.network.mets_filter import METSFilter
 
 # Import Controllers
@@ -32,6 +31,15 @@ from Simulation_Core.utils.logger import SimulationLogger
 from Simulation_Core.utils.metrics import calculate_performance_metrics
 from Simulation_Core.utils.plotting import generate_dashboard
 
+def rk4_step(model, t, state, dt, u_f, u_r, w_f, w_r, v_ms):
+    """Runge-Kutta 4th Order numerical integration step."""
+    k1 = model.get_state_derivative(t, state, u_f, u_r, w_f, w_r, v_ms)
+    k2 = model.get_state_derivative(t + dt/2, state + k1 * dt/2, u_f, u_r, w_f, w_r, v_ms)
+    k3 = model.get_state_derivative(t + dt/2, state + k2 * dt/2, u_f, u_r, w_f, w_r, v_ms)
+    k4 = model.get_state_derivative(t + dt, state + k3 * dt, u_f, u_r, w_f, w_r, v_ms)
+    next_state = state + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+    return next_state, k1 # Return k1 (dx at t) for logging
+
 def run():
     print("="*60)
     print("[*] Starting Cyber-Resilient LPV-Adaptive Active Suspension Sim")
@@ -43,8 +51,8 @@ def run():
     cfg = SimConfig()
     p = VehicleParams()
     
-    print(f"[*] Initializing Test Track (10 seconds, {cfg.v_kmh} km/h)...")
-    road_gen = RoadGenerator(cfg, p)
+    print(f"[*] Initializing Test Track (10 seconds, {cfg.v_kmh} km/h) from measured real-world CSV data...")
+    road_gen = RealRoadGenerator(cfg, p, csv_path="data/real_road_profile.csv")
     w_f_track, w_r_track = road_gen.generate_mixed_pothole_track()
     
     # 2. Initialize Models & Controllers
@@ -83,8 +91,7 @@ def run():
         
         # --- BASE PAPER SIMULATION (Fixed H∞) ---
         u_f_base, u_r_base = base_controller.compute_force(state_base)
-        dx_base = base_model.get_state_derivative(t, state_base, u_f_base, u_r_base, w_f, w_r, cfg.v_ms)
-        state_base += dx_base * cfg.dt
+        state_base, dx_base = rk4_step(base_model, t, state_base, cfg.dt, u_f_base, u_r_base, w_f, w_r, cfg.v_ms)
         
         # --- OUR PROJECT SIMULATION (LPV + UKF + TD3 + METS) ---
         
@@ -114,9 +121,8 @@ def run():
             mode_f, mode_r
         )
         
-        # Step E: Physics Integration
-        dx_ours = our_model.get_state_derivative(t, state_ours, u_f_ours, u_r_ours, w_f, w_r, cfg.v_ms)
-        state_ours += dx_ours * cfg.dt
+        # Step E: Physics Integration (RK4)
+        state_ours, dx_ours = rk4_step(our_model, t, state_ours, cfg.dt, u_f_ours, u_r_ours, w_f, w_r, cfg.v_ms)
         
         # Step F: Energy Harvesting Calculation
         z_sf_dot = state_ours[4] - p.a * state_ours[5]

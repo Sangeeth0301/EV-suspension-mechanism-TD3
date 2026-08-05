@@ -3,6 +3,8 @@
 # Generates the custom 10-second mixed-pothole test track
 # ==============================================================================
 import numpy as np
+import pandas as pd
+from scipy.interpolate import interp1d
 from Simulation_Core.road.iso_profiles import generate_iso_road
 
 class RoadGenerator:
@@ -95,3 +97,45 @@ class RoadGenerator:
         pothole_profile = (depth / 2) * (1 - np.cos(x))
         
         road_array[start_idx:end_idx] += pothole_profile
+
+class RealRoadGenerator:
+    """
+    Loads a real-world measured road profile CSV (Distance vs Elevation).
+    Interpolates it to match the exact dt (1kHz) of the physics solver.
+    """
+    def __init__(self, sim_config, vehicle_params, csv_path="data/real_road_profile.csv"):
+        self.cfg = sim_config
+        self.p = vehicle_params
+        self.csv_path = csv_path
+        
+        self.wheelbase = self.p.a + self.p.b
+        self.delay_sec = self.wheelbase / self.cfg.v_ms
+        self.delay_steps = int(self.delay_sec / self.cfg.dt)
+        
+    def generate_mixed_pothole_track(self):
+        """
+        Loads the CSV and resamples it to self.cfg.t_vector using spline interpolation.
+        Returns w_f and w_r in meters.
+        """
+        # Load dataset
+        df = pd.read_csv(self.csv_path)
+        dist_m = df.iloc[:, 0].values
+        elev_mm = df.iloc[:, 1].values
+        
+        # Convert Elevation from mm to meters
+        elev_m = elev_mm / 1000.0
+        
+        # Create interpolation function mapping distance to elevation
+        interpolator = interp1d(dist_m, elev_m, kind='cubic', fill_value='extrapolate')
+        
+        # Calculate the distance the car travels at each time step (constant velocity)
+        car_distances = self.cfg.v_ms * self.cfg.t_vector
+        
+        # Interpolate heights for the exact distances the car covers
+        w_f = interpolator(car_distances)
+        
+        # Generate rear wheel profile (delayed by wheelbase)
+        w_r = np.zeros_like(w_f)
+        w_r[self.delay_steps:] = w_f[:-self.delay_steps]
+        
+        return w_f, w_r
