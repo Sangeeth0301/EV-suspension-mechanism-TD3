@@ -11,6 +11,7 @@ import './index.css';
 
 function App() {
   const [data, setData] = useState([]);
+  const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Playback State
@@ -32,6 +33,8 @@ function App() {
           time_ms: (d.time * 1000).toFixed(0)
         }));
         setData(formattedData);
+        // Downsample for Recharts to prevent SVG overload (10,000 nodes -> 500 nodes)
+        setChartData(formattedData.filter((_, index) => index % 20 === 0));
         setLoading(false);
       })
       .catch(error => {
@@ -82,10 +85,11 @@ function App() {
     );
   }
 
-  // Find exact frame
-  const currentFrame = data.find((d) => d.time >= currentTime) || data[0];
-  const isAttack = currentFrame.cyber_attack;
-  const isEco = currentFrame.instant_power_w > 100;
+  // Fast O(1) lookup instead of O(N) Array.find running at 60 FPS
+  const frameIndex = Math.min(Math.floor(currentTime * 1000), Math.max(0, data.length - 1));
+  const currentFrame = data[frameIndex] || data[0];
+  const isAttack = currentFrame?.cyber_attack || false;
+  const isEco = currentFrame?.instant_power_w > 100;
 
   return (
     <div className="dashboard-container">
@@ -287,7 +291,7 @@ function App() {
         {/* Panel 1: Road Profile */}
         <ChartPanel colSpan={2} title="1. Road Profile (Mixed Pothole Track)" subtitle="ISO Class A + Random Deterministic Potholes">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorRoad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.3}/>
@@ -307,7 +311,7 @@ function App() {
         {/* Panel 2: UKF Estimator */}
         <ChartPanel title="2. UKF Road Estimation" subtitle="Severity (ρ) and Rate of Change (ρ̇) for Feedforward">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis dataKey="time" stroke="#94a3b8" />
               <YAxis stroke="#94a3b8" />
@@ -323,7 +327,7 @@ function App() {
         {/* Panel 3: LPV Actuator Force */}
         <ChartPanel title="3. LPV Actuator Force" subtitle="Active force applied by the motor to counter the bumps">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorForce" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
