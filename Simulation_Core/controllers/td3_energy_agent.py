@@ -52,17 +52,27 @@ class TD3EnergyAgent:
             return "ECO" if action[0] > 0.5 else "COMFORT"
             
         # 3. Heuristic Fallback (If no model is trained yet)
-        # This mimics what the agent learns.
+        # This mimics the intelligent policy the agent learns:
+        # - Harvest on smooth/moderate roads (safe to passively damp)
+        # - Active control only when road is rough (safety critical)
         
-        # If road is extremely rough or rapidly worsening, prioritize safety/comfort
+        # If road is extremely rough or rapidly worsening, prioritize safety
         if rho > 0.7 or rho_dot > 0.5:
             # UNLESS battery is critically low
             if battery_soc < self.critical_soc:
                 return "ECO"
             return "COMFORT"
+        
+        # If road is moderate (0.3 < rho < 0.7), use COMFORT for safety
+        if rho > 0.3:
+            if battery_soc < 0.25:
+                return "ECO"  # Low battery overrides moderate road
+            return "COMFORT"
             
-        # If battery is getting low, try to harvest energy on normal bumps
-        if battery_soc < 0.30:
+        # If road is smooth (rho < 0.3), opportunistically harvest energy
+        # This is the key insight: small bumps on smooth roads can be 
+        # passively damped while the actuator harvests their kinetic energy.
+        if rho < 0.3:
             return "ECO"
             
         # Default to comfort
