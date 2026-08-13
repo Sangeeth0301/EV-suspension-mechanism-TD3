@@ -1,0 +1,63 @@
+flowchart TB
+    subgraph INPUTS["⛽ EXTERNAL INPUTS"]
+        ROAD["🛣️ Road Profile w(t)<br/>ISO 8608 Classes A–D<br/>+ Random Potholes"]
+        IWM["⚡ IWM Disturbance F_em(t)<br/>k_em × i_d × sin(p × θ_m)"]
+        SPEED["🚗 Vehicle Speed v<br/>72 km/h (20 m/s)"]
+    end
+
+    subgraph PLANT["🔧 4-DOF HALF-CAR PLANT (Newton's Laws)"]
+        direction TB
+        SPRUNG["Sprung Mass (Body)<br/>ms = 730 kg<br/>I_φ = 1222 kg·m²"]
+        SPRING_F["Front Suspension"]
+        SPRING_R["Rear Suspension"]
+        UNSPRUNG_F["Front Unsprung Mass"]
+        UNSPRUNG_R["Rear Unsprung Mass"]
+        
+        SPRUNG --- SPRING_F --- UNSPRUNG_F
+        SPRUNG --- SPRING_R --- UNSPRUNG_R
+    end
+
+    subgraph ESTIMATOR["🧠 UKF ROAD ESTIMATOR"]
+        UKF["Unscented Kalman Filter"]
+        RHO["ρ(t) ∈ [0,1]<br/>Road Severity"]
+        RHO_DOT["ρ̇(t)<br/>Rate of Change"]
+        UKF --> RHO
+        UKF --> RHO_DOT
+    end
+
+    subgraph CONTROLLER["🎯 LPV H∞ CONTROLLER"]
+        BLEND["Polytopic Blending<br/>K(ρ) = (1-ρ)·K_smooth + ρ·K_rough"]
+        FORCE["u(t) = -K(ρ)·x + K_ρ̇·x"]
+        BLEND --> FORCE
+    end
+
+    subgraph ENERGY["⚡ ENERGY HARVESTING"]
+        TD3["TD3 DRL Agent<br/>Outputs: COMFORT / ECO"]
+        REGEN["Regenerative Damper"]
+        RECT["LC Low-Pass Filter"]
+        BATT["48V Aux Battery"]
+        TD3 --> REGEN
+        REGEN --> RECT --> BATT
+    end
+
+    subgraph NETWORK["📡 METS NETWORK FILTER"]
+        METS["Memory Event-Triggered<br/>‖e(t)‖ > σ‖x(t)‖"]
+    end
+
+    ROAD --> PLANT
+    IWM --> PLANT
+    SPEED --> IWM
+    PLANT -->|"x(t)"| METS
+    METS -->|"Filtered state"| ESTIMATOR
+    METS -->|"Filtered state"| CONTROLLER
+    ESTIMATOR -->|"ρ, ρ̇"| CONTROLLER
+    ESTIMATOR -->|"ρ, ρ̇"| ENERGY
+    CONTROLLER -->|"u_f, u_r"| PLANT
+    ENERGY -->|"Mode switch"| CONTROLLER
+
+    style INPUTS fill:#1e293b,stroke:#94a3b8,color:#f8fafc
+    style PLANT fill:#0f172a,stroke:#3b82f6,color:#f8fafc
+    style ESTIMATOR fill:#0f172a,stroke:#ef4444,color:#f8fafc
+    style CONTROLLER fill:#0f172a,stroke:#8b5cf6,color:#f8fafc
+    style ENERGY fill:#0f172a,stroke:#10b981,color:#f8fafc
+    style NETWORK fill:#0f172a,stroke:#f59e0b,color:#f8fafc
