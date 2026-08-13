@@ -10,10 +10,11 @@ class PowerConditioner:
     Models an LC Low-Pass Filter used in power electronics to smooth 
     rectified AC voltage/current into stable DC for battery charging.
     """
-    def __init__(self, L, C, R_load=10.0):
+    def __init__(self, L, C, R_load=10.0, N_t=10.0):
         self.L = L  # Inductance (Henries)
         self.C = C  # Capacitance (Farads)
         self.R_load = R_load  # Equivalent battery load resistance (Ohms)
+        self.N_t = N_t # Transformer / Boost step-up ratio
         
     def get_state_derivative(self, state, v_in):
         """
@@ -29,8 +30,11 @@ class PowerConditioner:
         i_L = state[0]
         v_C = state[1]
         
-        # di_L/dt = (v_in - v_C) / L
-        di_L_dt = (v_in - v_C) / self.L
+        # Step up voltage via lightweight transformer ratio
+        v_in_boost = v_in * self.N_t
+        
+        # di_L/dt = (v_in_boost - v_C) / L
+        di_L_dt = (v_in_boost - v_C) / self.L
         
         # dv_C/dt = (i_L - i_load) / C
         # i_load = v_C / R_load

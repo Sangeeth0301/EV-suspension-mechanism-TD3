@@ -108,7 +108,7 @@ q_body_vel_s = 1e4 * (1.0 + 5.0 * rho_smooth);
 Q_smooth = diag([q_stroke_s, q_body_vel_s, 1e4, 1e2]);
 R_care   = 1e-3;
 
-[P_smooth, ~, ~] = care(A_qc, B_qc, Q_smooth, R_care);
+[P_smooth, ~, ~] = care_nt(A_qc, B_qc, Q_smooth, R_care);
 K_smooth = (1/R_care) * B_qc' * P_smooth;
 K_smooth = K_smooth(:)';  % 1x4 row vector
 
@@ -118,13 +118,13 @@ q_stroke_r  = 1e5 * (1.0 - 0.5 * rho_rough);
 q_body_vel_r = 1e4 * (1.0 + 5.0 * rho_rough);
 Q_rough = diag([q_stroke_r, q_body_vel_r, 1e4, 1e2]);
 
-[P_rough, ~, ~] = care(A_qc, B_qc, Q_rough, R_care);
+[P_rough, ~, ~] = care_nt(A_qc, B_qc, Q_rough, R_care);
 K_rough = (1/R_care) * B_qc' * P_rough;
 K_rough = K_rough(:)';
 
 % Lyapunov P matrix (for stability monitoring)
 Q_lyap = diag([1e5, 1e4, 1e4, 1e2]);
-[P_lyap, ~, ~] = care(A_qc, B_qc, Q_lyap, R_care);
+[P_lyap, ~, ~] = care_nt(A_qc, B_qc, Q_lyap, R_care);
 
 % Feedforward gain for rho_dot
 K_rho_dot = [0.0, 500.0, 0.0, 0.0];
@@ -732,83 +732,200 @@ saveas(fig, fullfile(results_dir, 'MATLAB_Results_Dashboard.png'));
 fprintf('[*] Dashboard saved to: Simulation_Core/results/MATLAB_Results_Dashboard.png\n');
 
 %% ========================================================================
-% SECTION 8: SIMULINK MODEL GENERATION
+% SECTION 8: FULLY-WIRED SIMULINK MODEL GENERATION
 % ========================================================================
-fprintf('[*] Generating Simulink Model...\n');
+% This section creates a COMPLETE, RUNNABLE Simulink .slx model:
+%   - Clock + From-Workspace road profiles as inputs
+%   - One MATLAB Function block with ALL simulation logic (persistent state)
+%   - 6 named Scopes wired to all key output signals
+%   - To Workspace block for post-run analysis
+%   - MATLAB Function code injected automatically via Stateflow API
+% ========================================================================
+fprintf('[*] Generating Fully-Wired Simulink Model...\n');
 
 try
     model_name = 'CyberResilient_ActiveSuspension';
+    script_dir = fileparts(mfilename('fullpath'));
+    slx_path   = fullfile(script_dir, [model_name '.slx']);
     
-    % Close if already open
+    % -- Cleanup: close any stale open model --
     if bdIsLoaded(model_name)
         close_system(model_name, 0);
     end
+    if exist(slx_path, 'file')
+        delete(slx_path);
+    end
     
-    % Create new model
+    % -- Create model and configure solver (fixed-step ODE4, 1 ms, 10 s) --
     new_system(model_name);
     open_system(model_name);
+    set_param(model_name, ...
+        'SolverType',     'Fixed-step', ...
+        'Solver',         'ode4',        ...
+        'FixedStep',      '0.001',       ...
+        'StopTime',       '10',          ...
+        'SaveOutput',     'on',          ...
+        'OutputSaveName', 'sim_yout',    ...
+        'SaveFormat',     'StructureWithTime');
     
-    % Set solver to fixed-step at 1ms (matching our Python simulation)
-    set_param(model_name, 'SolverType', 'Fixed-step');
-    set_param(model_name, 'FixedStep', '0.001');
-    set_param(model_name, 'StopTime', '10');
-    set_param(model_name, 'Solver', 'ode4');
+    % -- Export road profiles to base workspace (used by From Workspace blocks) --
+    road_f_ts = timeseries(w_f', t');
+    road_r_ts = timeseries(w_r', t');
+    assignin('base', 'road_f_ts', road_f_ts);
+    assignin('base', 'road_r_ts', road_r_ts);
+    fprintf('    [+] Road profiles exported to workspace.\n');
     
-    % =====================================================================
-    % Add Road Profile (From Workspace)
-    % =====================================================================
-    % Save road data to workspace for Simulink
-    road_time_series_f = timeseries(w_f', t');
-    road_time_series_r = timeseries(w_r', t');
-    assignin('base', 'road_f_ts', road_time_series_f);
-    assignin('base', 'road_r_ts', road_time_series_r);
+    % ==================================================================
+    % ADD ALL BLOCKS
+    % ==================================================================
+    % 1. Clock — provides simulation time scalar to the MATLAB Function block
+    add_block('simulink/Sources/Clock', [model_name '/t_clock'], ...
+        'Position', [35, 55, 75, 85]);
     
+    % 2. Road inputs (From Workspace, linearly interpolated between timesteps)
     add_block('simulink/Sources/From Workspace', [model_name '/Road_Front'], ...
-        'VariableName', 'road_f_ts', 'Position', [50, 100, 150, 140]);
+        'VariableName', 'road_f_ts', ...
+        'Position', [35, 140, 180, 170], ...
+        'Interpolate', 'on');
     add_block('simulink/Sources/From Workspace', [model_name '/Road_Rear'], ...
-        'VariableName', 'road_r_ts', 'Position', [50, 200, 150, 240]);
+        'VariableName', 'road_r_ts', ...
+        'Position', [35, 200, 180, 230], ...
+        'Interpolate', 'on');
     
-    % =====================================================================
-    % Add Half-Car Plant (MATLAB Function Block)
-    % =====================================================================
+    % 3. Main simulation MATLAB Function block
+    %    Inputs  (3): t_in, w_f_in, w_r_in
+    %    Outputs (9): z_c_ours, z_c_base, accel_ours, accel_base,
+    %                 u_f_out, rho_f_out, soc_out, mode_out, V_lyap_out
     add_block('simulink/User-Defined Functions/MATLAB Function', ...
-        [model_name '/HalfCar_Plant'], 'Position', [400, 80, 550, 280]);
+        [model_name '/Suspension_Sim'], ...
+        'Position', [255, 45, 490, 395]);
     
-    % =====================================================================
-    % Add LPV Controller (MATLAB Function Block)
-    % =====================================================================
-    add_block('simulink/User-Defined Functions/MATLAB Function', ...
-        [model_name '/LPV_Controller'], 'Position', [400, 350, 550, 450]);
+    % 4. Six named Scopes for live visualization during simulation
+    %    Scope 1: Body Displacement comparison (ours vs base)
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Body_Disp'], ...
+        'Position', [565, 45, 615, 80], 'NumInputPorts', '2', 'Open', 'off');
+    %    Scope 2: Body Acceleration comparison
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Accel'], ...
+        'Position', [565, 105, 615, 140], 'NumInputPorts', '2', 'Open', 'off');
+    %    Scope 3: LPV Actuator Force
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Force'], ...
+        'Position', [565, 165, 615, 200], 'Open', 'off');
+    %    Scope 4: UKF Road Severity rho
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Rho'], ...
+        'Position', [565, 225, 615, 260], 'Open', 'off');
+    %    Scope 5: Battery SoC and Mode flag
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Energy'], ...
+        'Position', [565, 285, 615, 320], 'NumInputPorts', '2', 'Open', 'off');
+    %    Scope 6: Lyapunov V(x) stability function
+    add_block('simulink/Sinks/Scope', [model_name '/Sc_Lyapunov'], ...
+        'Position', [565, 345, 615, 380], 'Open', 'off');
     
-    % =====================================================================
-    % Add Scopes
-    % =====================================================================
-    add_block('simulink/Sinks/Scope', [model_name '/Body_Displacement_Scope'], ...
-        'Position', [700, 100, 750, 140], 'NumInputPorts', '2');
-    add_block('simulink/Sinks/Scope', [model_name '/Body_Acceleration_Scope'], ...
-        'Position', [700, 180, 750, 220], 'NumInputPorts', '2');
-    add_block('simulink/Sinks/Scope', [model_name '/Actuator_Force_Scope'], ...
-        'Position', [700, 260, 750, 300]);
-    add_block('simulink/Sinks/Scope', [model_name '/Road_Profile_Scope'], ...
-        'Position', [700, 340, 750, 380], 'NumInputPorts', '2');
-    add_block('simulink/Sinks/Scope', [model_name '/Energy_Scope'], ...
-        'Position', [700, 420, 750, 460]);
+    % 5. Mux (9→1) + To Workspace — saves all signals for post-processing
+    add_block('simulink/Signal Routing/Mux', [model_name '/Out_Mux'], ...
+        'Position', [520, 415, 545, 505], 'Inputs', '9');
+    add_block('simulink/Sinks/To Workspace', [model_name '/SimOut'], ...
+        'VariableName', 'sim_out', ...
+        'Position', [565, 430, 680, 465], ...
+        'MaxDataPoints', 'inf', ...
+        'SaveFormat', 'Structure With Time');
     
-    % =====================================================================
-    % Add To Workspace blocks for post-processing
-    % =====================================================================
-    add_block('simulink/Sinks/To Workspace', [model_name '/Save_States'], ...
-        'VariableName', 'sim_states', 'Position', [700, 500, 800, 540]);
+    fprintf('    [+] All %d blocks placed.\n', 3 + 1 + 6 + 2);
     
-    % Save the model
-    save_system(model_name);
-    fprintf('[*] Simulink model saved: %s.slx\n', model_name);
-    fprintf('[*] NOTE: Open the MATLAB Function blocks to add the plant/controller code.\n');
-    fprintf('[*]       The model structure is ready for you to wire up!\n');
+    % ==================================================================
+    % WIRE ALL BLOCKS
+    % ==================================================================
+    % Inputs → Suspension_Sim
+    add_line(model_name, 't_clock/1',    'Suspension_Sim/1', 'autorouting', 'on');
+    add_line(model_name, 'Road_Front/1', 'Suspension_Sim/2', 'autorouting', 'on');
+    add_line(model_name, 'Road_Rear/1',  'Suspension_Sim/3', 'autorouting', 'on');
+    
+    % Suspension_Sim outputs → Scopes
+    % Port 1: z_c_ours (m)  Port 2: z_c_base (m)
+    add_line(model_name, 'Suspension_Sim/1', 'Sc_Body_Disp/1', 'autorouting', 'on');
+    add_line(model_name, 'Suspension_Sim/2', 'Sc_Body_Disp/2', 'autorouting', 'on');
+    % Port 3: accel_ours (m/s2)  Port 4: accel_base (m/s2)
+    add_line(model_name, 'Suspension_Sim/3', 'Sc_Accel/1',     'autorouting', 'on');
+    add_line(model_name, 'Suspension_Sim/4', 'Sc_Accel/2',     'autorouting', 'on');
+    % Port 5: u_f actuator force (N)
+    add_line(model_name, 'Suspension_Sim/5', 'Sc_Force/1',     'autorouting', 'on');
+    % Port 6: rho_f road severity (0–1)
+    add_line(model_name, 'Suspension_Sim/6', 'Sc_Rho/1',       'autorouting', 'on');
+    % Port 7: battery SoC (0–1)   Port 8: ECO mode flag (0/1)
+    add_line(model_name, 'Suspension_Sim/7', 'Sc_Energy/1',    'autorouting', 'on');
+    add_line(model_name, 'Suspension_Sim/8', 'Sc_Energy/2',    'autorouting', 'on');
+    % Port 9: Lyapunov V(x) = x'Px
+    add_line(model_name, 'Suspension_Sim/9', 'Sc_Lyapunov/1',  'autorouting', 'on');
+    
+    % All 9 outputs also feed through Mux → To Workspace
+    for k_wire = 1:9
+        add_line(model_name, sprintf('Suspension_Sim/%d', k_wire), ...
+                             sprintf('Out_Mux/%d',        k_wire), ...
+                             'autorouting', 'on');
+    end
+    add_line(model_name, 'Out_Mux/1', 'SimOut/1', 'autorouting', 'on');
+    
+    fprintf('    [+] All signal wires connected.\n');
+    
+    % ==================================================================
+    % INJECT MATLAB FUNCTION BLOCK CODE VIA STATEFLOW API
+    % ==================================================================
+    % Generate the self-contained simulation function code string.
+    % All gains (K_smooth, K_rough, P_lyap, etc.) are hardcoded as numeric
+    % literals so the block needs no workspace access during simulation.
+    sim_func_code = build_sim_function_code(p, K_smooth, K_rough, K_rho_dot, ...
+                                             P_lyap, K_base_front, K_base_rear);
+    
+    code_injected = false;
+    try
+        sfrt       = sfroot();
+        all_charts = sfrt.find('-isa', 'Stateflow.EMChart');
+        tgt_path   = [model_name '/Suspension_Sim'];
+        for ci = 1:numel(all_charts)
+            if strcmp(all_charts(ci).Path, tgt_path)
+                all_charts(ci).Script = sim_func_code;
+                code_injected = true;
+                break;
+            end
+        end
+    catch sf_err
+        fprintf('    [!] Stateflow API error: %s\n', sf_err.message);
+    end
+    
+    if code_injected
+        fprintf('    [+] MATLAB Function code injected via Stateflow API.\n');
+    else
+        % Fallback: write code to a companion .m file the user can paste manually
+        code_file = fullfile(script_dir, 'Suspension_Sim_code.m');
+        fid = fopen(code_file, 'w');
+        fprintf(fid, '%s', sim_func_code);
+        fclose(fid);
+        fprintf('    [!] Auto-inject failed. Function code written to:\n');
+        fprintf('        %s\n', code_file);
+        fprintf('    [!] Open Suspension_Sim block and paste that code inside.\n');
+    end
+    
+    % Save model
+    save_system(model_name, slx_path);
+    
+    fprintf('\n');
+    fprintf('  ================================================================\n');
+    fprintf('  [OK]  Simulink Model Ready: %s.slx\n', model_name);
+    fprintf('  ================================================================\n');
+    fprintf('   HOW TO RUN:\n');
+    fprintf('   1. The model window is already open in Simulink.\n');
+    fprintf('   2. Click the green Play button in the Simulink toolbar, OR\n');
+    fprintf('      type in MATLAB Command Window:\n');
+    fprintf('         >> sim(''%s'')\n', model_name);
+    fprintf('   3. Double-click any Scope block to see live signals.\n');
+    fprintf('   4. After sim: type sim_out in MATLAB to inspect results.\n');
+    fprintf('  ================================================================\n');
     
 catch ME
-    fprintf('[!] Simulink model creation skipped: %s\n', ME.message);
-    fprintf('[!] The MATLAB script simulation above is fully functional.\n');
+    fprintf('[!] Simulink model generation failed: %s\n', ME.message);
+    if ~isempty(ME.stack)
+        fprintf('[!]   at function ''%s'', line %d\n', ME.stack(1).name, ME.stack(1).line);
+    end
+    fprintf('[!] The pure MATLAB simulation (Sections 1-7) is complete and valid.\n');
 end
 
 fprintf('\n[*] ALL DONE! Total elapsed: %.2f seconds.\n', toc);
@@ -894,12 +1011,251 @@ function f = bump_stop_force(deflection, max_stroke, k_bs)
 end
 
 function t_settle = compute_settling_time(t, signal, threshold)
-    %COMPUTE_SETTLING_TIME Find worst settling time (last time signal exceeds threshold)
+    %COMPUTE_SETTLING_TIME Duration from first to last exceedance of threshold.
+    % A large value = the car was bouncing for a long time (bad).
+    % A small value = the car settled quickly (good).
     above = find(abs(signal) > threshold);
     if isempty(above)
-        t_settle = 0;
+        t_settle = 0;  % Never exceeded — instant settling
     else
-        last_above = above(end);
-        t_settle = t(end) - t(last_above);
+        t_settle = t(above(end)) - t(above(1));  % Time between first and last bounce
     end
 end
+
+function code = build_sim_function_code(p, K_smooth, K_rough, K_rho_dot, P_lyap, K_base_front, K_base_rear)
+%BUILD_SIM_FUNCTION_CODE  Generate the MATLAB Function block script as a string.
+% All controller gains and vehicle parameters are substituted as numeric
+% literals so the resulting block is fully self-contained.
+
+L = {};
+
+% ---- Function header and persistent variable declarations ----
+L{end+1} = 'function [z_c_ours, z_c_base, accel_ours, accel_base, u_f_out, rho_f_out, soc_out, mode_out, V_lyap_out] = Suspension_Sim(t_in, w_f_in, w_r_in)';
+L{end+1} = '% Cyber-Resilient LPV-Adaptive Active Suspension — Simulink MATLAB Function Block';
+L{end+1} = '% All parameters hardcoded. State maintained via persistent variables.';
+L{end+1} = '% Automatically re-initialises when t_in resets to 0 (new simulation run).';
+L{end+1} = '';
+L{end+1} = 'persistent st_ours st_base bat_soc lc_il lc_vc';
+L{end+1} = 'persistent rho_f_p rdot_filt mets_last mets_first';
+L{end+1} = '';
+
+% ---- Hardcoded vehicle parameters ----
+L{end+1} = '% ---- VEHICLE PARAMETERS (hardcoded numeric literals) ----';
+L{end+1} = sprintf('ms    = %.4f;  I_phi = %.4f;', p.ms, p.I_phi);
+L{end+1} = sprintf('a     = %.4f;  b     = %.4f;', p.a, p.b);
+L{end+1} = sprintf('mu_f  = %.4f;  mu_r  = %.4f;', p.mu_f, p.mu_r);
+L{end+1} = sprintf('ks_f  = %.2f; ks_r  = %.2f;', p.ks_f, p.ks_r);
+L{end+1} = sprintf('cs_f  = %.2f;  cs_r  = %.2f;', p.cs_f, p.cs_r);
+L{end+1} = sprintf('kt_f  = %.2f; kt_r  = %.2f;', p.kt_f, p.kt_r);
+L{end+1} = sprintf('k_em  = %.4f; i_d   = %.4f;  p_pole = %d;', p.k_em, p.i_d, p.p_pole);
+L{end+1} = sprintf('whr   = %.4f; v_ms  = %.4f;', p.wheel_radius, p.v_ms);
+L{end+1} = sprintf('C_e   = %.4f; eta_r = %.4f;  K_v    = %.4f;', p.C_e, p.eta_regen, p.K_v);
+L{end+1} = sprintf('smax  = %.6f; u_max = %.4f;  k_bs   = %.6e;', p.stroke_max, p.u_max, p.k_bs);
+L{end+1} = sprintf('Lf    = %.6f; Cf    = %.8f;  Rl     = %.4f;', p.L_filter, p.C_filter, p.R_load);
+L{end+1} = sprintf('sig_m = %.4f;', p.sigma_mets);
+L{end+1} = 'dt = 0.001; w_max = 0.05; ema_a = 0.05; eta_act = 0.85; cap_j = 50000;';
+L{end+1} = '';
+
+% ---- Hardcoded controller gains (substituted numeric values) ----
+L{end+1} = '% ---- CONTROLLER GAINS (computed from CARE, substituted as literals) ----';
+L{end+1} = sprintf('Ks  = %s;', mat2str(K_smooth,    10));
+L{end+1} = sprintf('Kr  = %s;', mat2str(K_rough,     10));
+L{end+1} = sprintf('Krd = %s;', mat2str(K_rho_dot,   10));
+L{end+1} = sprintf('Pl  = %s;', mat2str(P_lyap,      10));
+L{end+1} = sprintf('Kbf = %s;', mat2str(K_base_front,10));
+L{end+1} = sprintf('Kbr = %s;', mat2str(K_base_rear, 10));
+L{end+1} = '';
+
+% ---- Initialisation block ----
+L{end+1} = '% ---- INITIALISE on first call OR when t_in resets to 0 ----';
+L{end+1} = 'if isempty(st_ours) || (t_in < 5e-4)';
+L{end+1} = '    st_ours = zeros(8,1);  st_base = zeros(8,1);';
+L{end+1} = '    bat_soc = 0.5;  lc_il = 0;  lc_vc = 0;';
+L{end+1} = '    rho_f_p = 0;   rdot_filt = 0;';
+L{end+1} = '    mets_last = zeros(8,1);  mets_first = true;';
+L{end+1} = 'end';
+L{end+1} = '';
+L{end+1} = 'wf = w_f_in;  wr = w_r_in;';
+L{end+1} = '';
+
+% ---- Base paper simulation ----
+L{end+1} = '% ==== BASE PAPER: Fixed H-infinity controller ====';
+L{end+1} = 'uf_b = max(-u_max, min(u_max, -Kbf * st_base));';
+L{end+1} = 'ur_b = max(-u_max, min(u_max, -Kbr * st_base));';
+L{end+1} = '[st_base, dx_b] = rk4_hc(t_in, st_base, uf_b, ur_b, wf, wr, ...';
+L{end+1} = '    ms,I_phi,a,b,mu_f,mu_r,ks_f,ks_r,cs_f,cs_r,kt_f,kt_r,k_em,i_d,p_pole,whr,v_ms,smax,k_bs,dt);';
+L{end+1} = '';
+
+% ---- METS filter ----
+L{end+1} = '% ==== OUR PROJECT: LPV + UKF + TD3 + METS ====';
+L{end+1} = '% Step A: METS Network Filter';
+L{end+1} = 'if mets_first';
+L{end+1} = '    mets_last = st_ours;  mets_first = false;  net = st_ours;';
+L{end+1} = 'else';
+L{end+1} = '    em = st_ours - mets_last;';
+L{end+1} = '    ne = sqrt(em(1)^2+em(2)^2+em(3)^2+em(4)^2+em(5)^2+em(6)^2+em(7)^2+em(8)^2);';
+L{end+1} = '    nx = sqrt(st_ours(1)^2+st_ours(2)^2+st_ours(3)^2+st_ours(4)^2+st_ours(5)^2+st_ours(6)^2+st_ours(7)^2+st_ours(8)^2);';
+L{end+1} = '    if ne > sig_m * nx;  mets_last = st_ours;  net = st_ours;';
+L{end+1} = '    else;                                       net = mets_last;  end';
+L{end+1} = 'end';
+L{end+1} = '';
+
+% ---- UKF road estimator ----
+L{end+1} = '% Step B: UKF Road Severity Estimator (simplified algebraic)';
+L{end+1} = 'rho_f     = min(1.0, max(0.0, abs(st_ours(1) - a*st_ours(2) - st_ours(3)) / w_max));';
+L{end+1} = 'rdot_filt = ema_a * ((rho_f - rho_f_p) / dt) + (1.0 - ema_a) * rdot_filt;';
+L{end+1} = 'rho_dot   = rdot_filt;  rho_f_p = rho_f;';
+L{end+1} = '';
+
+% ---- TD3 heuristic agent ----
+L{end+1} = '% Step C: TD3 Heuristic Energy Agent';
+L{end+1} = 'if rho_f > 0.7 || rho_dot > 0.5';
+L{end+1} = '    if bat_soc < 0.02;  mf = 1;  else;  mf = 0;  end';
+L{end+1} = 'elseif rho_f > 0.3';
+L{end+1} = '    if bat_soc < 0.25;  mf = 1;  else;  mf = 0;  end';
+L{end+1} = 'else';
+L{end+1} = '    mf = 1;  % Smooth road — harvest energy';
+L{end+1} = 'end';
+L{end+1} = '';
+
+% ---- LPV controller ----
+L{end+1} = '% Step D: LPV Controller — Quarter-Car State Mapping';
+L{end+1} = 'zsf  = net(1) - a*net(2);   zsfd = net(5) - a*net(6);';
+L{end+1} = 'qcf  = [zsf - net(3); zsfd; 0; net(7)];';
+L{end+1} = 'zsr  = net(1) + b*net(2);   zsrd = net(5) + b*net(6);';
+L{end+1} = 'qcr  = [zsr - net(4); zsrd; 0; net(8)];';
+L{end+1} = 'ffl  = 0.2 * u_max;';
+L{end+1} = 'if mf == 1  % ECO: regenerative damping';
+L{end+1} = '    ufo = -C_e * qcf(2);  uro = -C_e * qcr(2);';
+L{end+1} = 'else        % COMFORT: LPV active control';
+L{end+1} = '    Kf  = (1.0 - rho_f) * Ks + rho_f * Kr;';
+L{end+1} = '    ufo = (-Kf * qcf) + max(-ffl, min(ffl, -Krd * max(0, rho_dot) * qcf));';
+L{end+1} = '    uro = (-Kf * qcr) + max(-ffl, min(ffl, -Krd * max(0, rho_dot) * qcr));';
+L{end+1} = 'end';
+L{end+1} = 'ufo = max(-u_max, min(u_max, ufo));';
+L{end+1} = 'uro = max(-u_max, min(u_max, uro));';
+L{end+1} = '';
+
+% ---- RK4 integration ----
+L{end+1} = '% Step E: RK4 Physics Integration';
+L{end+1} = '[st_ours, dx_o] = rk4_hc(t_in, st_ours, ufo, uro, wf, wr, ...';
+L{end+1} = '    ms,I_phi,a,b,mu_f,mu_r,ks_f,ks_r,cs_f,cs_r,kt_f,kt_r,k_em,i_d,p_pole,whr,v_ms,smax,k_bs,dt);';
+L{end+1} = '';
+
+% ---- Energy harvesting ----
+L{end+1} = '% Step F: Energy Harvesting with LC Power Electronics Filter';
+L{end+1} = 'vrf = (st_ours(5) - a*st_ours(6)) - st_ours(7);  % Front suspension rel. velocity';
+L{end+1} = 'if mf == 1  % ECO mode: harvest';
+L{end+1} = '    vrect = abs(K_v * vrf);';
+L{end+1} = '    di_L  = (vrect - lc_vc) / Lf;';
+L{end+1} = '    dv_C  = (lc_il - lc_vc / Rl) / Cf;';
+L{end+1} = '    lc_il = min(max(lc_il + di_L * dt, 0), 100);  % Clamped for numerical stability';
+L{end+1} = '    lc_vc = min(max(lc_vc + dv_C * dt, 0), 500);';
+L{end+1} = '    harv  = (lc_vc^2 / Rl) * eta_r * dt;';
+L{end+1} = '    bat_soc = min(1.0, bat_soc + harv / cap_j);';
+L{end+1} = 'else  % COMFORT mode: consume battery';
+L{end+1} = '    bat_soc = max(0.0, bat_soc - abs(ufo * vrf) / eta_act * dt / cap_j);';
+L{end+1} = '    lc_il = lc_il * 0.99;  lc_vc = lc_vc * 0.99;  % LC filter decays';
+L{end+1} = 'end';
+L{end+1} = '';
+
+% ---- Lyapunov monitor ----
+L{end+1} = '% Step G: Lyapunov Stability Monitor — V(x) = x_qc'' * P * x_qc';
+L{end+1} = 'xq  = [st_ours(1)-a*st_ours(2)-st_ours(3); st_ours(5)-a*st_ours(6); 0; st_ours(7)];';
+L{end+1} = 'V_x = xq'' * Pl * xq;';
+L{end+1} = '';
+
+% ---- Assign outputs ----
+L{end+1} = '% ---- OUTPUTS ----';
+L{end+1} = 'z_c_ours   = st_ours(1);  z_c_base   = st_base(1);';
+L{end+1} = 'accel_ours = dx_o(5);     accel_base = dx_b(5);';
+L{end+1} = 'u_f_out    = ufo;         rho_f_out  = rho_f;';
+L{end+1} = 'soc_out    = bat_soc;     mode_out   = double(mf);';
+L{end+1} = 'V_lyap_out = V_x;';
+L{end+1} = 'end  % Suspension_Sim';
+L{end+1} = '';
+
+% ---- Local helper: RK4 integrator ----
+L{end+1} = '% ===== LOCAL: 4th-Order Runge-Kutta =====';
+L{end+1} = 'function [ns, k1] = rk4_hc(t, x, uf, ur, wf, wr, ms, Ip, a, b, muf, mur, ksf, ksr, csf, csr, ktf, ktr, kem, id, pp, whr, vms, sm, kbs, dt)';
+L{end+1} = '    k1 = hc_ode(t,       x,         uf,ur,wf,wr,ms,Ip,a,b,muf,mur,ksf,ksr,csf,csr,ktf,ktr,kem,id,pp,whr,vms,sm,kbs);';
+L{end+1} = '    k2 = hc_ode(t+dt/2,  x+k1*dt/2, uf,ur,wf,wr,ms,Ip,a,b,muf,mur,ksf,ksr,csf,csr,ktf,ktr,kem,id,pp,whr,vms,sm,kbs);';
+L{end+1} = '    k3 = hc_ode(t+dt/2,  x+k2*dt/2, uf,ur,wf,wr,ms,Ip,a,b,muf,mur,ksf,ksr,csf,csr,ktf,ktr,kem,id,pp,whr,vms,sm,kbs);';
+L{end+1} = '    k4 = hc_ode(t+dt,    x+k3*dt,   uf,ur,wf,wr,ms,Ip,a,b,muf,mur,ksf,ksr,csf,csr,ktf,ktr,kem,id,pp,whr,vms,sm,kbs);';
+L{end+1} = '    ns  = x + (dt / 6) * (k1 + 2*k2 + 2*k3 + k4);';
+L{end+1} = 'end';
+L{end+1} = '';
+
+% ---- Local helper: Half-car ODE ----
+L{end+1} = '% ===== LOCAL: 4-DOF Half-Car ODE =====';
+L{end+1} = 'function dx = hc_ode(t, x, uf, ur, wf, wr, ms, Ip, a, b, muf, mur, ksf, ksr, csf, csr, ktf, ktr, kem, id, pp, whr, vms, sm, kbs)';
+L{end+1} = '    z_c=x(1); th=x(2); zuf=x(3); zur=x(4); zcd=x(5); thd=x(6); zufd=x(7); zurd=x(8);';
+L{end+1} = '    zsf=z_c-a*th;  zsr=z_c+b*th;  zsfd=zcd-a*thd;  zsrd=zcd+b*thd;';
+L{end+1} = '    dsf=zsf-zuf;   dsr=zsr-zur;   dtf=zuf-wf;      dtr=zur-wr;';
+L{end+1} = '    vrf=zsfd-zufd; vrr=zsrd-zurd;';
+L{end+1} = '    if     dsf >  sm;  fb_f = kbs*(dsf-sm)^3;';
+L{end+1} = '    elseif dsf < -sm;  fb_f = kbs*(dsf+sm)^3;';
+L{end+1} = '    else;              fb_f = 0;  end';
+L{end+1} = '    if     dsr >  sm;  fb_r = kbs*(dsr-sm)^3;';
+L{end+1} = '    elseif dsr < -sm;  fb_r = kbs*(dsr+sm)^3;';
+L{end+1} = '    else;              fb_r = 0;  end';
+L{end+1} = '    fiwm = kem * id * sin(pp * (vms/whr) * t);';
+L{end+1} = '    Fsf  = ksf*dsf + csf*vrf + fb_f - uf;';
+L{end+1} = '    Fsr  = ksr*dsr + csr*vrr + fb_r - ur;';
+L{end+1} = '    dx = [zcd; thd; zufd; zurd; ...';
+L{end+1} = '          -(Fsf+Fsr)/ms; (a*Fsf-b*Fsr)/Ip; ...';
+L{end+1} = '          (Fsf - ktf*dtf + fiwm)/muf; (Fsr - ktr*dtr + fiwm)/mur];';
+L{end+1} = 'end';
+
+code = strjoin(L, newline);
+end
+
+function [P, K, L] = care_nt(A, B, Q, R)
+%CARE_NT  Continuous Algebraic Riccati Equation solver — NO TOOLBOX REQUIRED.
+% Uses Laub's Hamiltonian matrix eigendecomposition.
+% Requires only base MATLAB (eig is built-in).
+%
+% Solves:  A'P + PA - P*B*(1/R)*B'*P + Q = 0
+%
+% Inputs : A (nxn), B (nxm), Q (nxn symmetric PSD), R (mxm symmetric PD)
+% Outputs: P — CARE solution matrix
+%          K = R\B'P  — LQR gain matrix
+%          L = eig(A-BK)  — closed-loop eigenvalues
+
+    n     = size(A, 1);
+    R_inv = inv(R);
+    
+    % Build 2n x 2n Hamiltonian matrix
+    H = [  A,              -B * R_inv * B' ; ...
+           -Q,             -A'             ];
+    
+    % Eigendecomposition (eig is in base MATLAB, no toolbox needed)
+    [V, D] = eig(H);
+    ev     = diag(D);
+    
+    % Sort all eigenvalues by real part (most negative first)
+    [~, sort_idx] = sort(real(ev));
+    V_sorted      = V(:, sort_idx);
+    ev_sorted     = ev(sort_idx);
+    
+    % Verify we have n stable (negative real-part) eigenvalues
+    n_stable = sum(real(ev_sorted) < 0);
+    if n_stable < n
+        error('care_nt: Only %d stable eigenvalues found (need %d). Check system stabilisability.', n_stable, n);
+    end
+    
+    % Use the n most stable eigenvectors to span the stable invariant subspace
+    V_stable = V_sorted(:, 1:n);
+    
+    % P is recovered from the relation: [X1; X2] spans the stable subspace
+    % where X2 = P * X1  =>  P = X2 / X1
+    X1 = V_stable(1:n,     :);
+    X2 = V_stable(n+1:2*n, :);
+    
+    P = real(X2 / X1);
+    P = (P + P') / 2;      % Symmetrise to eliminate floating-point noise
+    
+    K = R_inv * B' * P;
+    L = eig(A - B * K);
+end
+%% 
