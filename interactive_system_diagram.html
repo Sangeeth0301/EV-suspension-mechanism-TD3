@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive System Architecture</title>
+    <!-- Load Mermaid -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+    <!-- Load SVG Pan Zoom -->
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script>
+      mermaid.initialize({ 
+          startOnLoad: true, 
+          theme: 'dark',
+          securityLevel: 'loose'
+      });
+      
+      // Wait for Mermaid to render the SVG, then attach pan/zoom
+      window.addEventListener('load', function() {
+          setTimeout(function() {
+              const svg = document.querySelector('.mermaid svg');
+              if(svg) {
+                  svg.setAttribute('width', '100%');
+                  svg.setAttribute('height', '90vh');
+                  svgPanZoom(svg, {
+                      zoomEnabled: true,
+                      controlIconsEnabled: true,
+                      fit: true,
+                      center: true,
+                      minZoom: 0.5,
+                      maxZoom: 10
+                  });
+              }
+          }, 1000); // Give mermaid 1 second to finish rendering
+      });
+    </script>
+    <style>
+        body { 
+            background-color: #0f172a; 
+            margin: 0; 
+            padding: 20px; 
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+            overflow: hidden; /* Prevent page scrolling, use SVG panning instead */
+        }
+        .header {
+            text-align: center;
+            padding-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+        .mermaid { 
+            background-color: #1e293b; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            width: 100%;
+            height: 90vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        Interactive Cyber-Physical System Architecture<br>
+        <span style="font-size: 0.9rem; color: #94a3b8; font-weight: normal;">Use your mouse wheel to zoom in/out, and click & drag to pan around.</span>
+    </div>
+    
+    <div class="mermaid">
+flowchart LR
+
+    %% =========================
+    %% STRICT LAYOUT ENFORCEMENT
+    %% =========================
+    %% Forcing Dagre to process these ranks FIRST so Inputs are locked on the far left.
+    IN ~~~ PLANT ~~~ SENSORS ~~~ COMMS ~~~ ECU ~~~ ACTUATION ~~~ ENERGY
+
+    %% =========================
+    %% LINK STYLING (CYAN to pop off the dark background)
+    %% =========================
+    linkStyle default stroke:#00e5ff,stroke-width:2px;
+
+    %% =========================
+    %% 1. EXTERNAL DISTURBANCES (Forced to Far Left)
+    %% =========================
+    subgraph IN ["1. EXTERNAL DISTURBANCES"]
+        direction TB
+        ROAD["Road profile w(t)<br/>Potholes - bumps - roughness"]
+        OP["Vehicle operating conditions<br/>Speed - braking - acceleration - load"]
+        IWM["IWM effects<br/>Unsprung mass - torque ripple - imbalance"]
+    end
+
+    %% =========================
+    %% 2. PHYSICAL PLANT
+    %% =========================
+    subgraph PLANT["2. IWM-EV HALF-CAR PHYSICAL PLANT"]
+        direction TB
+        BODY["Sprung mass<br/>Vehicle body<br/>Heave + pitch"]
+        SUSP["Suspension mechanics<br/>Springs - safety damper<br/>Mechanical travel limits"]
+        EMF["Front and rear<br/>bidirectional EM actuators"]
+        WHEEL["Unsprung masses<br/>Wheels - tires - hubs - IWMs"]
+        BODY <--> SUSP
+        SUSP <--> EMF
+        EMF <--> WHEEL
+    end
+
+    %% =========================
+    %% 3. SENSOR LAYER
+    %% =========================
+    subgraph SENSORS["3. SENSOR LAYER"]
+        direction TB
+        SENS["Body IMU - body accelerometers<br/>Wheel accelerometers<br/>Suspension displacement<br/>Actuator position/current/voltage<br/>Wheel speed"]
+        BATT_S["Battery voltage/current<br/>SoC - temperature"]
+    end
+
+    %% =========================
+    %% 4. COMMUNICATION AND CYBERSECURITY
+    %% =========================
+    subgraph COMMS["4. COMMUNICATION AND CYBER-DEFENSE"]
+        direction LR
+        METS["Memory event-triggered sampler<br/>Reduces redundant transmissions"]
+        NET["Primary vehicle network<br/>CAN / Automotive Ethernet"]
+        SEC["Edge cybersecurity detector<br/>DoS - FDI - replay - timing attacks"]
+        VALID["Data validation and trust manager"]
+        FALL["Fallback manager<br/>Channel isolation - safe-mode request"]
+        
+        METS --> NET --> SEC --> VALID
+        SEC --> FALL
+    end
+
+    %% =========================
+    %% 5. AI CONTROL ECU
+    %% =========================
+    subgraph ECU ["5. INTELLIGENT ECU"]
+        direction TB
+        UKF["UKF estimator<br/>Vehicle states<br/>Wheel states<br/>Suspension velocity<br/>Road roughness &rho;<br/>Roughness rate d&rho;/dt"]
+        LPV["LPV H&infin; safety controller<br/>Adaptive force control<br/>Comfort - tire contact<br/>Suspension travel - disturbance rejection"]
+        TD3["TD3 energy supervisor<br/>Regeneration request &alpha;(t)<br/>Battery-aware energy management"]
+        LIMIT["Safety coordinator and<br/>force/current controller<br/>Force limits - current limits<br/>thermal limits - battery limits"]
+    end
+
+    %% =========================
+    %% 6. ACTUATOR DRIVE
+    %% =========================
+    subgraph ACTUATION ["6. ACTUATION"]
+        direction TB
+        DRIVE["4-Quadrant Bidirectional Inverter<br/>(Drive and Rectifier combined)"]
+    end
+
+    %% =========================
+    %% 7. ENERGY RECOVERY PATH
+    %% =========================
+    subgraph ENERGY["7. REGENERATIVE POWER PATH"]
+        direction LR
+        DCLINK["DC-link capacitor<br/>and LC filtering"]
+        DCDC["Bidirectional DC-DC converter"]
+        SC["Supercapacitor buffer<br/>(optional)"]
+        BMS["Battery-management interface"]
+        BAT["EV battery / energy storage"]
+
+        DCLINK --> DCDC
+        DCDC <--> SC
+        DCDC --> BMS --> BAT
+    end
+
+    %% (Moved to top)
+    %% INPUT CONNECTIONS
+    ROAD -->|"Vertical road excitation"| WHEEL
+    OP --> PLANT
+    IWM -->|"Wheel-side disturbance"| WHEEL
+
+    %% PLANT TO SENSORS
+    PLANT -->|"Measured vehicle outputs"| SENS
+    EMF -->|"Electrical measurements"| SENS
+    BATT_S -->|"Battery status"| TD3
+
+    %% SENSORS TO CYBER
+    SENS --> METS
+
+    %% CYBER TO ECU (UKF)
+    VALID -->|"Trusted measurements"| UKF
+    FALL -->|"Fallback estimates / safe data"| UKF
+
+    %% ECU INTERNAL
+    UKF -->|"Estimated states and road condition"| LPV
+    OP -->|"Scheduling parameters"| LPV
+    UKF -->|"Road and motion estimates"| TD3
+    LPV -->|"Required force and safety limits"| TD3
+    FALL -->|"Regeneration restriction"| TD3
+    TD3 -->|"Mode Weighting (Comfort/Eco)"| LPV
+    
+    LPV -->|"Required safe actuator force"| LIMIT
+    TD3 -->|"Allowed regeneration level"| LIMIT
+    FALL -->|"Safe actuator limits"| LIMIT
+
+    %% ECU TO ACTUATION
+    LIMIT -->|"Force/current command"| DRIVE
+    
+    %% ACTUATION TO PLANT
+    DRIVE -->|"Active actuator force"| EMF
+    EMF -->|"Closed-loop mechanical action"| PLANT
+
+    %% ENERGY PATH
+    EMF -->|"Generated back-EMF"| DRIVE
+    DRIVE -->|"Rectified DC Power"| DCLINK
+    BAT -->|"DC power for active control"| DCDC
+    DCDC -->|"Actuator-side DC power"| DRIVE
+
+    %% FEEDBACK
+    EMF -.->|"Force, current, voltage feedback"| SENS
+    PLANT -.->|"Body, wheel and suspension feedback"| SENS
+    BAT -.->|"SoC, voltage and temperature feedback"| BATT_S
+    SEC -.->|"Attack status"| FALL
+    VALID -.->|"Measurement trust status"| UKF
+    LIMIT -.->|"Command saturation status"| TD3
+
+    %% STYLING FOR MAXIMUM VISIBILITY
+    classDef default fill:#1e293b,stroke:#cbd5e1,color:#ffffff,stroke-width:1px;
+    </div>
+</body>
+</html>
