@@ -83,7 +83,7 @@ def run():
                                    "results", "td3_energy_model.zip")
     td3_agent = TD3EnergyAgent(model_path=td3_model_path)
     if td3_agent.is_loaded:
-        print("[*] TD3 Agent: Loaded trained model ✓")
+        print("[*] TD3 Agent: Loaded trained model [OK]")
     else:
         print("[*] TD3 Agent: Using heuristic fallback (no trained model found)")
     

@@ -81,8 +81,8 @@ def train():
     print(f"\n[*] Training for {cfg.total_timesteps} timesteps...")
     print(f"    Learning Rate: {cfg.learning_rate}")
     print(f"    Batch Size: {cfg.batch_size}")
-    print(f"    Discount Factor (γ): {cfg.gamma}")
-    print(f"    Mass Variation: ±{cfg.mass_variation_pct*100:.0f}%")
+    print(f"    Discount Factor (gamma): {cfg.gamma}")
+    print(f"    Mass Variation: +/-{cfg.mass_variation_pct*100:.0f}%")
     
     model.learn(
         total_timesteps=cfg.total_timesteps,
