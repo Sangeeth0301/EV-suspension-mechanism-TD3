@@ -1,6 +1,21 @@
 function [uf, ur, rho_f, mode_flag] = LPV_UKF_Ctrl(x_state, soc_in)
 % LPV-Adaptive H-inf Controller with UKF Road Estimator + TD3 Heuristic
 % Block 2 in the signal chain. Uses x_state from Unit Delay (1ms behind plant).
+%
+% MATHEMATICAL EQUATIONS:
+% 1. UKF Algebraic Proxy (Road Severity):
+%    rho = |z_c - a*theta - z_uf| / w_max
+%    rho_dot = EMA( d(rho)/dt ) = alpha * (d_rho) + (1 - alpha) * rho_dot_prev
+% 2. TD3 Heuristic Energy Supervisor (Logic distilled from DRL):
+%    if rho > 0.7 OR rho_dot > 0.5 -> COMFORT MODE (Unless SoC < 0.02)
+%    if rho < 0.3 -> ECO MODE (Passive Damping for energy harvesting)
+% 3. LPV H-infinity Gain Scheduling:
+%    K(rho) = (1 - rho)*K_s + rho*K_r
+%    u_active = -K(rho)*x_state - K_rd * max(0, rho_dot) * x_state
+% 4. Saturation Limiter:
+%    u_final = clamp(u_active, -u_max, u_max)
+%
+% -------------------------------------------------------------------------
 persistent rho_f_p rdot_filt mets_last mets_first
 
 a=1.10; b=1.50;

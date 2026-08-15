@@ -1,6 +1,18 @@
 function [x_new, z_c, body_accel] = HalfCar_Plant(t_in, wf, wr, x_prev, uf_prev, ur_prev)
 % 4-DOF Half-Car Plant with RK4 Integration
 % State: [z_c, theta, z_uf, z_ur, z_c_dot, theta_dot, z_uf_dot, z_ur_dot]
+%
+% MATHEMATICAL EQUATIONS:
+% 1. Sprung Mass Dynamics:
+%    m_s * z_c_ddot = -F_sf - F_sr
+%    I_phi * theta_ddot = a*F_sf - b*F_sr
+% 2. Unsprung Mass Dynamics:
+%    m_uf * z_uf_ddot = F_sf - k_tf(z_uf - w_f) + F_iwm
+%    m_ur * z_ur_ddot = F_sr - k_tr(z_ur - w_r) + F_iwm
+% 3. Suspension Force (with Bump Stop):
+%    F_sf = k_sf(z_sf - z_uf) + c_sf(z_sf_dot - z_uf_dot) + F_bs - u_f
+%    F_bs = k_bs * (d_s - s_max)^3  (if d_s > s_max)
+% 
 % State passed explicitly — no persistent variables needed here.
 
 ms=730.0;  I_phi=1222.0;  a=1.10;  b=1.50;

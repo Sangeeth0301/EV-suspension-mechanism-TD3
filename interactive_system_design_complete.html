@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Optimal Suspension Mechanism Design</title>
+    <title>Complete Interactive System Design</title>
     <!-- Load Mermaid -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
     <!-- Load SVG Pan Zoom -->
@@ -62,8 +62,8 @@
 </head>
 <body>
     <div class="header">
-        Optimal Suspension Mechanism Architecture (Core Control & Power Flow)<br>
-        <span style="font-size: 0.9rem; color: #94a3b8; font-weight: normal;">Cyber/Network layers temporarily removed for core mechanism clarity.</span>
+        Complete Cyber-Resilient Active Suspension System Architecture<br>
+        <span style="font-size: 0.9rem; color: #94a3b8; font-weight: normal;">Includes Full Physical Plant, ECU Control, Cyber/Network Security, and Energy Flow</span>
     </div>
     
     <div class="mermaid">
@@ -74,7 +74,7 @@ flowchart LR
     linkStyle default stroke:#00e5ff,stroke-width:2px;
 
     %% Enforce Left-to-Right Rank Ordering to prevent layout flipping
-    ROAD ~~~ BODY ~~~ SENSORS ~~~ UKF ~~~ LIMIT ~~~ FARADAY ~~~ BATT
+    ROAD ~~~ BODY ~~~ SENSORS ~~~ METS ~~~ UKF ~~~ LIMIT ~~~ FARADAY ~~~ BATT
 
     %% 1. The Main Inputs at the far left
     ROAD(("INPUT:<br/>Road Profile w(t)"))
@@ -91,13 +91,20 @@ flowchart LR
     SENSORS["Suspension Sensors<br/>(IMU/Displacement)"]
     BATT_S["Battery Sensors<br/>(SoC/Temp)"]
     
-    %% 4. AI Control System (ECU)
+    %% 4. Cyber Security Layer
+    METS["Event-Triggered<br/>Sampler (METS)"]
+    NET["Vehicle Network"]
+    SEC["Edge ML Detector<br/>(DoS/FDI)"]
+    VALID["Trust Manager"]
+    FALL["Fallback Manager<br/>(Safe-Mode)"]
+    
+    %% 5. AI Control System (ECU)
     UKF["UKF Estimator<br/>(States & Road ρ)"]
     TD3["TD3 DRL Agent<br/>(Energy Supervisor)"]
     LPV["LPV H∞ Controller<br/>(Adaptive Force)"]
     LIMIT["Safety Coordinator<br/>(Saturation Limits)"]
     
-    %% 5. Power Generation & Storage
+    %% 6. Power Generation & Storage
     FARADAY["Induced EMF<br/>(Faraday's Law)"]
     CONV["Power Converter"]
     AMP["Amplifier & Transformer"]
@@ -117,8 +124,17 @@ flowchart LR
     BODY -.->|"Kinematics"| SENSORS
     DAMPER -.->|"Feedback"| SENSORS
 
-    %% Sensors directly to ECU (Core Mechanism)
-    SENSORS -->|"Raw Data"| UKF
+    %% Sensors to Cyber
+    SENSORS -->|"Raw Data"| METS
+    METS --> NET --> SEC
+    SEC --> VALID
+    SEC -.->|"Attack Status"| FALL
+
+    %% Cyber to ECU
+    VALID -->|"Trusted States"| UKF
+    FALL -->|"Safe Data"| UKF
+    FALL -.->|"Regen Restriction"| TD3
+    FALL -.->|"Actuator Limit"| LIMIT
     
     UKF -->|"States (ρ, ρ̇)"| LPV
     UKF -->|"Road (ρ, ρ̇)"| TD3
@@ -152,6 +168,12 @@ flowchart LR
     
     style SENSORS fill:#1e293b,stroke:#ef4444,color:#f8fafc,stroke-width:2px
     style BATT_S fill:#1e293b,stroke:#ef4444,color:#f8fafc,stroke-width:2px
+    
+    style METS fill:#1e293b,stroke:#f59e0b,color:#f8fafc,stroke-width:2px
+    style NET fill:#1e293b,stroke:#f59e0b,color:#f8fafc,stroke-width:2px
+    style SEC fill:#1e293b,stroke:#f59e0b,color:#f8fafc,stroke-width:2px
+    style VALID fill:#1e293b,stroke:#f59e0b,color:#f8fafc,stroke-width:2px
+    style FALL fill:#1e293b,stroke:#f59e0b,color:#f8fafc,stroke-width:2px
     
     style UKF fill:#1e293b,stroke:#8b5cf6,color:#f8fafc,stroke-width:2px
     style TD3 fill:#1e293b,stroke:#8b5cf6,color:#f8fafc,stroke-width:2px

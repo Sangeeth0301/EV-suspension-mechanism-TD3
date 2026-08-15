@@ -73,13 +73,10 @@ flowchart LR
     %% LINK STYLING (CYAN)
     linkStyle default stroke:#00e5ff,stroke-width:2px;
 
-    %% Enforce Left-to-Right Rank Ordering to prevent layout flipping
-    ROAD ~~~ BODY ~~~ SENSORS ~~~ UKF ~~~ LIMIT ~~~ FARADAY ~~~ BATT
-
     %% 1. The Main Inputs at the far left
-    ROAD(("INPUT:<br/>Road Profile w(t)"))
-    OP(("INPUT:<br/>Vehicle Ops"))
-    IWM(("INPUT:<br/>IWM Effects"))
+    ROAD(("INPUT:<br/>Road Profile w(t)<br/>(Potholes/Bumps)"))
+    OP(("INPUT:<br/>Vehicle Ops<br/>(Speed/Load)"))
+    IWM(("INPUT:<br/>IWM Effects<br/>(Torque ripple)"))
     
     %% 2. The Physical Plant
     BODY["Sprung Mass<br/>(Vehicle Body)"]
@@ -98,16 +95,17 @@ flowchart LR
     LIMIT["Safety Coordinator<br/>(Saturation Limits)"]
     
     %% 5. Power Generation & Storage
-    FARADAY["Induced EMF<br/>(Faraday's Law)"]
-    CONV["Power Converter"]
-    AMP["Amplifier & Transformer"]
-    LC["Rectifier & LC Filter"]
+    DRIVE["4-Quadrant Inverter<br/>(Drive/Rectifier)"]
+    DCLINK["DC-Link &<br/>LC Filter"]
+    DCDC["Bidirectional<br/>DC-DC Converter"]
+    SC[("Supercapacitor")]
+    BMS["Battery Mngr<br/>(BMS)"]
     BATT[("48V EV Battery")]
 
     %% --- MAIN SIGNAL FLOW (LEFT TO RIGHT) ---
     %% Inputs to Plant
     ROAD ==>|"Disturbance"| WHEEL
-    IWM ==>|"Torque"| WHEEL
+    IWM ==>|"Torque/Mass"| WHEEL
     OP ==> BODY
     BODY --- SUSP --- WHEEL
     SUSP <--> DAMPER
@@ -118,7 +116,7 @@ flowchart LR
     DAMPER -.->|"Feedback"| SENSORS
 
     %% Sensors directly to ECU (Core Mechanism)
-    SENSORS -->|"Raw Data"| UKF
+    SENSORS -->|"Raw State Data"| UKF
     
     UKF -->|"States (ρ, ρ̇)"| LPV
     UKF -->|"Road (ρ, ρ̇)"| TD3
@@ -126,19 +124,21 @@ flowchart LR
     LPV -->|"Required Force"| LIMIT
 
     %% ECU to Actuation
-    LIMIT -->|"Safe Force Cmd"| DAMPER
+    LIMIT -->|"Safe Force Cmd"| DRIVE
+    DRIVE ==>|"Mechanical Force"| DAMPER
 
     %% --- ENERGY HARVESTING PATH ---
-    DAMPER ===>|"Magnetic Flux"| FARADAY
-    FARADAY ===>|"AC Current"| CONV
-    CONV ===> AMP
-    AMP ===> LC
-    LC ===>|"DC Charge"| BATT
+    DAMPER ===>|"Back-EMF"| DRIVE
+    DRIVE ===>|"Rectified DC"| DCLINK
+    DCLINK ===> DCDC
+    DCDC <===> SC
+    DCDC ===> BMS
+    BMS ===>|"Charge"| BATT
     
     %% --- INTELLIGENT FEEDBACK LOOPS ---
-    BATT -.-> BATT_S
     BATT_S -.->|"SoC & Temp"| TD3
-    LIMIT -.->|"Power Draw"| LC
+    BATT -.->|"Battery Status"| BATT_S
+    DCDC -.->|"Actuator Power Draw"| DRIVE
 
     %% --- STYLING ---
     style ROAD fill:#334155,stroke:#94a3b8,color:#f8fafc,stroke-width:2px
@@ -158,10 +158,11 @@ flowchart LR
     style LPV fill:#1e293b,stroke:#8b5cf6,color:#f8fafc,stroke-width:2px
     style LIMIT fill:#1e293b,stroke:#8b5cf6,color:#f8fafc,stroke-width:2px
     
-    style FARADAY fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
-    style CONV fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
-    style AMP fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
-    style LC fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
+    style DRIVE fill:#1e293b,stroke:#ec4899,color:#f8fafc,stroke-width:2px
+    style DCLINK fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
+    style DCDC fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
+    style SC fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
+    style BMS fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
     style BATT fill:#1e293b,stroke:#10b981,color:#f8fafc,stroke-width:2px
     </div>
 </body>

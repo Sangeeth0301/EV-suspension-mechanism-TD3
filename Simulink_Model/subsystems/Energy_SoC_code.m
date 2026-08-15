@@ -1,6 +1,18 @@
 function [soc_out, lc_voltage] = Energy_SoC(x_state, uf, mode_in)
 % LC Filter Power Electronics + Regenerative Energy Harvesting
-% Tracks battery State-of-Charge and LC filter capacitor voltage.
+% Power Electronics LC Filter & Battery SoC Integrator (RK4)
+% 
+% MATHEMATICAL EQUATIONS:
+% 1. Regenerative Back-EMF (Rectified):
+%    V_emf = | k_e * (z_s_dot - z_u_dot) |
+%    I_regen = V_emf / R_internal
+% 2. LC Filter Dynamics (2-State ODE):
+%    L * (di_L / dt) = V_in - V_c - I_L * R_L
+%    C * (dV_c / dt) = I_L - (V_c / R_load)
+% 3. Battery State of Charge (SoC) Coulomb Counting:
+%    SoC(t) = SoC_0 + integral( I_battery / (Capacity_Ah * 3600) ) dt
+%
+% -------------------------------------------------------------------------
 persistent bat_soc lc_il lc_vc
 
 a=1.10; K_v=50.0; eta_r=0.65; eta_act=0.85;

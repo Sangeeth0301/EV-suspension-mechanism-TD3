@@ -4,6 +4,9 @@
 % This script loads the required variables (road profile) into the workspace
 % and then opens the beautifully arranged Simulink model so you can press Play.
 
+addpath('scripts');
+addpath('subsystems');
+
 disp('==========================================================');
 disp('[*] Cyber-Resilient Suspension   MATLAB Online Setup');
 disp('==========================================================');
