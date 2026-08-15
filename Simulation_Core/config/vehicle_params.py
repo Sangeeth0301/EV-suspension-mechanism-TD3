@@ -56,7 +56,7 @@ class VehicleParams:
     # Regenerative Electromagnetic Actuator Parameters
     # --------------------------------------------------------------------------
     # Power harvested = C_e * (z_s_dot - z_u_dot)^2
-    C_e = 1500.0        # Equivalent regenerative damping coefficient (N*s/m)
+    C_e = 5000.0        # Equivalent regenerative damping coefficient (N*s/m) - Increased for critical damping
     eta_regen = 0.65    # Efficiency of the power electronics/battery converter
     
     # --------------------------------------------------------------------------

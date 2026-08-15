@@ -69,10 +69,10 @@ class TD3EnergyAgent:
                 return "ECO"  # Low battery overrides moderate road
             return "COMFORT"
             
-        # If road is smooth (rho < 0.3), opportunistically harvest energy
+        # If road is smooth (rho < 0.05), opportunistically harvest energy
         # This is the key insight: small bumps on smooth roads can be 
         # passively damped while the actuator harvests their kinetic energy.
-        if rho < 0.3:
+        if rho < 0.05:
             return "ECO"
             
         # Default to comfort

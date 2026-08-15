@@ -57,15 +57,15 @@ class LPVController:
         # Q matrix (State penalties)
         # As rho increases (rougher road), we penalize body acceleration/velocity more
         # to prioritize comfort, while relaxing suspension stroke penalties.
-        q_stroke = 1e5 * (1.0 - 0.5 * rho)  # Less penalty on stroke on rough roads
-        q_body_vel = 1e4 * (1.0 + 5.0 * rho) # High penalty on body movement on rough roads
+        q_stroke = 5e5 * (1.0 - 0.5 * rho)  # Increased penalty
+        q_body_vel = 5e4 * (1.0 + 5.0 * rho) # Increased penalty
         q_tire = 1e4                         # Constant penalty on tire deflection
         q_unsprung_vel = 1e2                 # Constant penalty on unsprung mass
         
         Q = np.diag([q_stroke, q_body_vel, q_tire, q_unsprung_vel])
         
         # R matrix (Actuator effort penalty)
-        R = np.array([[1e-3]])
+        R = np.array([[1e-4]]) # Decreased from 1e-3 for faster actuation
         
         # Solve CARE: A^T P + P A - P B R^-1 B^T P + Q = 0
         P = scipy.linalg.solve_continuous_are(self.A, self.B, Q, R)

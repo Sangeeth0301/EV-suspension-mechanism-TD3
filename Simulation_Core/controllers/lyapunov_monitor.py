@@ -72,23 +72,27 @@ class LyapunovMonitor:
     
     def track_settling(self, t, z_c):
         """
-        Tracks settling time: measures how long it takes |z_c| < 1mm 
-        after detecting a disturbance exceeding 3mm.
+        Tracks settling time: measures how long it takes |z_c| < 2mm 
+        after a disturbance peak exceeding 5mm.
         """
         abs_z_c = abs(z_c)
         
         if not self.is_disturbed:
-            # Check if a disturbance just started
             if abs_z_c > self.disturbance_threshold:
                 self.is_disturbed = True
                 self.disturbance_start_time = t
+                self.peak_z_c = abs_z_c
                 self.settled_count = 0
         else:
-            # We're tracking a disturbance — check if settled
+            # If the disturbance is getting larger, update the peak and start time
+            if abs_z_c > self.peak_z_c:
+                self.peak_z_c = abs_z_c
+                self.disturbance_start_time = t
+                
             if abs_z_c < self.settled_threshold:
                 self.settled_count += 1
                 if self.settled_count >= self.settled_required:
-                    # Settled! Record the settling time
+                    # Settled! Record the settling time from the PEAK
                     settle_time = t - self.disturbance_start_time
                     self.settling_times.append(settle_time)
                     self.is_disturbed = False
