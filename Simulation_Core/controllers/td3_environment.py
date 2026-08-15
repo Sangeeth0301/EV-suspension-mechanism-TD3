@@ -86,7 +86,7 @@ class SuspensionEnv(gym.Env):
         z_uf_dot = self.state_vector[6]
         v_rel_f = z_sf_dot - z_uf_dot
         
-        force_eco = self.p.C_e * v_rel_f
+        force_eco = -self.p.C_e * v_rel_f
         force_comfort = -10000 * (self.state_vector[0] - self.p.a * self.state_vector[1] - self.state_vector[2]) # Simplified LPV
         
         u_f = (1.0 - action_val) * force_comfort + action_val * force_eco
@@ -101,8 +101,8 @@ class SuspensionEnv(gym.Env):
         # Calculate Energy Harvested (Power = Force * Velocity)
         # We only harvest energy when the actuator resists the suspension movement
         power_watts = 0.0
-        if action_val > 0.5 and (u_f * v_rel_f) > 0:
-            power_watts = u_f * v_rel_f * self.p.eta_regen
+        if action_val > 0.5:
+            power_watts = abs(u_f * v_rel_f) * self.p.eta_regen
             
         joules_harvested = power_watts * self.dt
         self.battery_soc += joules_harvested / self.battery_capacity_joules

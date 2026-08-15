@@ -119,7 +119,7 @@ class LPVController:
         if mode_f == "ECO":
             # In ECO mode, we disable active pushing and only use regenerative damping
             # Must be negative to resist motion! (u_f is subtracted in the ODE)
-            u_f = -self.p.C_e * qc_state_f[1] # -C_e * (z_s_dot - z_u_dot)
+            u_f = -self.p.C_e * (qc_state_f[1] - qc_state_f[3]) # -C_e * (z_s_dot - z_u_dot)
         else:
             # Polytopic blending of gains based on rho
             K_f = (1.0 - rho_f) * self.K_smooth + rho_f * self.K_rough
@@ -139,7 +139,7 @@ class LPVController:
             
         # 2. REAR WHEEL
         if mode_r == "ECO":
-            u_r = -self.p.C_e * qc_state_r[1]
+            u_r = -self.p.C_e * (qc_state_r[1] - qc_state_r[3])
         else:
             K_r = (1.0 - rho_r) * self.K_smooth + rho_r * self.K_rough
             u_r_base = -np.dot(K_r, qc_state_r)
