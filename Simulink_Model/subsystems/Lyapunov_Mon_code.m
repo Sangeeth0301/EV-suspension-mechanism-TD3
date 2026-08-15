@@ -1,4 +1,15 @@
 function V_x = Lyapunov_Mon(x_state)
+% Lyapunov Stability Monitor (Real-Time Safety Verification)
+%
+% MATHEMATICAL EQUATIONS:
+% 1. Quadratic Lyapunov Function (Energy-like scalar):
+%    V(x) = x^T * P * x
+%    Where 'x' is the state vector and 'P' is the positive-definite 
+%    solution to the Algebraic Riccati Equation (ARE).
+% 2. Stability Condition:
+%    For the system to be strictly stable, we must have V(x) > 0 and 
+%    dV(x)/dt < 0. We track V(x) in real-time to guarantee safety limits.
+%
 % Lyapunov Stability Monitor  V(x) = x_qc' * P * x_qc
 % V(x) must be positive and decreasing for Lyapunov stability.
 % P is the solution to CARE with Q=diag([1e5,1e4,1e4,1e2]), R=1e-3.

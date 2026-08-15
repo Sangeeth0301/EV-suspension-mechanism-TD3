@@ -1,6 +1,18 @@
 function [z_c_base, accel_base] = Base_Paper_Sim(t_in, wf, wr)
 % Fixed H-infinity Base Paper Controller (self-contained with persistent state)
-% Used as a performance baseline — no gain scheduling, no energy harvesting.
+% Baseline Passive Half-Car Plant (For Benchmarking)
+% State: [z_c, theta, z_uf, z_ur, z_c_dot, theta_dot, z_uf_dot, z_ur_dot]
+%
+% MATHEMATICAL EQUATIONS (Passive Plant):
+% 1. No Active Control Force:
+%    u_f = 0, u_r = 0
+% 2. Sprung Mass Dynamics:
+%    m_s * z_c_ddot = -F_sf - F_sr
+% 3. Unsprung Mass Dynamics:
+%    m_uf * z_uf_ddot = F_sf - k_tf(z_uf - w_f)
+%    m_ur * z_ur_ddot = F_sr - k_tr(z_ur - w_r)
+%
+% -------------------------------------------------------------------------
 persistent st_base
 
 ms=730.0; I_phi=1222.0; a=1.10; b=1.50;
