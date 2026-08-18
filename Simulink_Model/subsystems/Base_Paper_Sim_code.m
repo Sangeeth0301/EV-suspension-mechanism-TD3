@@ -1,7 +1,17 @@
 function [z_c_base, accel_base] = Base_Paper_Sim(t_in, wf, wr)
-% Fixed H-infinity Base Paper Controller (self-contained with persistent state)
-% Baseline Passive Half-Car Plant (For Benchmarking)
+% PASSIVE Half-Car Baseline (benchmark for the active controller)
 % State: [z_c, theta, z_uf, z_ur, z_c_dot, theta_dot, z_uf_dot, z_ur_dot]
+%
+% This is the comparison baseline: a conventional passive suspension with
+% spring and damper only and ZERO actuator force. It is a standard,
+% independently verifiable reference — anyone can reproduce it from the
+% vehicle parameters alone.
+%
+% Previously this block applied a hand-typed gain vector labelled "fixed
+% H-infinity". Those numbers were never synthesised from any LMI or Riccati
+% equation, so every "improvement over baseline" figure computed against
+% them was meaningless. Comparing active against passive is the honest
+% claim and is what the results now report.
 %
 % MATHEMATICAL EQUATIONS (Passive Plant):
 % 1. No Active Control Force:
@@ -21,8 +31,9 @@ ks_f=18000; ks_r=22000; cs_f=1200; cs_r=1200;
 kt_f=190000; kt_r=190000;
 k_em=15.0; i_d=20.0; p_pole=8; whr=0.30; v_ms=20.00;
 smax=0.0800; u_max=6000; k_bs=1.00e+07; dt=0.001;
-Kbf = [-12000 5500 8000 0 -3500 1800 2200 0];
-Kbr = [-12000 -5500 0 8000 -3500 -1800 0 2200];
+% Passive baseline: zero actuator gain (u_f = u_r = 0)
+Kbf = zeros(1,8);
+Kbr = zeros(1,8);
 
 if isempty(st_base); st_base=zeros(8,1); end
 
